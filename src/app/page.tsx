@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
+import VRMViewer from '@/components/VRMViewer';
 
 interface FaceFeatures {
   eyeWidth: number;
@@ -865,8 +866,9 @@ export default function FaceLandmarkTester() {
 
           {/* 検出結果表示 */}
           {((detectionMode === 'camera' && cameraFeatures) || (detectionMode === 'photo' && photoFeatures)) && (
-            <div className="bg-white rounded-2xl p-8 mb-8 shadow-xl">
-              <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">🎯 検出された顔特徴量</h2>
+            <>
+              <div className="bg-white rounded-2xl p-8 mb-8 shadow-xl">
+                <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">🎯 検出された顔特徴量</h2>
               
               {(() => {
                 const currentFeatures = detectionMode === 'camera' ? cameraFeatures : photoFeatures;
@@ -933,7 +935,25 @@ export default function FaceLandmarkTester() {
                   </>
                 );
               })()}
-            </div>
+              </div>
+
+              {/* VRMプレビュー */}
+              <div className="bg-white rounded-2xl p-8 mb-8 shadow-xl">
+                <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">
+                  🎭 VRM アバター プレビュー
+                </h2>
+                <div className="bg-gray-50 rounded-xl p-4 mb-4">
+                  <p className="text-center text-gray-600 mb-2">
+                    顔特徴量に基づいてVRMアバターが自動調整されます
+                  </p>
+                </div>
+                <div style={{ height: '500px' }}>
+                  <VRMViewer 
+                    faceFeatures={detectionMode === 'camera' ? cameraFeatures : photoFeatures}
+                  />
+                </div>
+              </div>
+            </>
           )}
 
           {/* 使用方法・注意事項 */}
