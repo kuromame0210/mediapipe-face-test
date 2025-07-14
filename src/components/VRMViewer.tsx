@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRM, VRMUtils } from '@pixiv/three-vrm';
 
 interface FaceFeatures {
@@ -36,7 +36,6 @@ export default function VRMViewer({ faceFeatures }: VRMViewerProps) {
   
   const [isLoading, setIsLoading] = useState(false);
   const [loadingError, setLoadingError] = useState<string>('');
-  const [currentBlendShapes, setCurrentBlendShapes] = useState<Record<string, number>>({});
   const [appliedShapes, setAppliedShapes] = useState<string[]>([]);
   const [notFoundShapes, setNotFoundShapes] = useState<string[]>([]);
   const [availableShapes, setAvailableShapes] = useState<string[]>([]);
@@ -360,7 +359,6 @@ export default function VRMViewer({ faceFeatures }: VRMViewerProps) {
     console.log(`  ⏭️ スキップ (${skippedShapes.length}個): ${skippedShapes.length > 0 ? skippedShapes.join(', ') : 'なし'}`);
 
     // UI状態を更新
-    setCurrentBlendShapes(adjustments);
     setAppliedShapes(appliedShapes);
     setNotFoundShapes(notFoundShapes);
   };

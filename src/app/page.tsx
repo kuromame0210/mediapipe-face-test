@@ -111,7 +111,7 @@ export default function FaceLandmarkTester() {
         const originalConsoleError = console.error;
         
         // MediaPipeの内部ログをフィルタリング
-        const filterMediaPipeLog = (args: any[]) => {
+        const filterMediaPipeLog = (args: unknown[]) => {
           if (args[0] && typeof args[0] === 'string') {
             const msg = args[0];
             return msg.includes('Created TensorFlow Lite XNNPACK delegate') ||
@@ -499,7 +499,7 @@ export default function FaceLandmarkTester() {
   }, [faceLandmarkerImage]);
 
   // 詳細特徴量計算
-  const calculateDetailedFeatures = (landmarks: any[], processingTime: number): FaceFeatures => {
+  const calculateDetailedFeatures = (landmarks: Array<{x: number, y: number, z?: number}>, processingTime: number): FaceFeatures => {
     try {
       // 目の特徴（左目基準）
       const leftEyeOuter = landmarks[33];
@@ -648,7 +648,7 @@ export default function FaceLandmarkTester() {
   };
 
   // ランドマーク描画関数
-  const drawLandmarks = (ctx: CanvasRenderingContext2D, landmarks: any[], width: number, height: number) => {
+  const drawLandmarks = (ctx: CanvasRenderingContext2D, landmarks: Array<{x: number, y: number, z?: number}>, width: number, height: number) => {
     ctx.lineWidth = 2;
     ctx.globalAlpha = 0.8;
 
