@@ -37,7 +37,8 @@ export default function FaceLandmarkTester() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Core State
-  const [faceLandmarker, setFaceLandmarker] = useState<FaceLandmarker | null>(null);
+  const [faceLandmarkerVideo, setFaceLandmarkerVideo] = useState<FaceLandmarker | null>(null);
+  const [faceLandmarkerImage, setFaceLandmarkerImage] = useState<FaceLandmarker | null>(null);
   const [detectionMode, setDetectionMode] = useState<DetectionMode>('photo');
   const [status, setStatus] = useState('🚀 AIモデルを初期化中...');
   const [initProgress, setInitProgress] = useState(0);
@@ -50,6 +51,9 @@ export default function FaceLandmarkTester() {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [photoFeatures, setPhotoFeatures] = useState<FaceFeatures | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [analysisStep, setAnalysisStep] = useState('');
+  const [isWarmedUp, setIsWarmedUp] = useState(false);
 
   // MediaPipe初期化
   useEffect(() => {
@@ -63,9 +67,10 @@ export default function FaceLandmarkTester() {
         );
         
         setStatus('🧠 Face Landmarker AIモデルをダウンロード中...');
-        setInitProgress(60);
+        setInitProgress(40);
         
-        const landmarker = await FaceLandmarker.createFromOptions(vision, {
+        // VIDEO用のFaceLandmarker作成
+        const landmarkerVideo = await FaceLandmarker.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
             delegate: "GPU"
@@ -77,7 +82,66 @@ export default function FaceLandmarkTester() {
           minTrackingConfidence: 0.5
         });
         
-        setFaceLandmarker(landmarker);
+        setFaceLandmarkerVideo(landmarkerVideo);
+        setInitProgress(70);
+        setStatus('📷 IMAGE用モデルを初期化中...');
+        
+        // IMAGE用のFaceLandmarker作成
+        const landmarkerImage = await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+            delegate: "GPU"
+          },
+          runningMode: "IMAGE",
+          numFaces: 1,
+          minFaceDetectionConfidence: 0.5,
+          minFacePresenceConfidence: 0.5,
+          minTrackingConfidence: 0.5
+        });
+        
+        setFaceLandmarkerImage(landmarkerImage);
+        setInitProgress(90);
+        setStatus('🔧 MediaPipe最適化中...');
+        
+        // MediaPipeの内部ログを抑制（WASM/Emscripten出力を含む）
+        const originalConsoleLog = console.log;
+        const originalConsoleInfo = console.info;
+        const originalConsoleWarn = console.warn;
+        const originalConsoleError = console.error;
+        
+        // MediaPipeの内部ログをフィルタリング
+        const filterMediaPipeLog = (args: any[]) => {
+          if (args[0] && typeof args[0] === 'string') {
+            const msg = args[0];
+            return msg.includes('Created TensorFlow Lite XNNPACK delegate') ||
+                   msg.includes('INFO:') ||
+                   msg.includes('Graph successfully started') ||
+                   msg.includes('Graph finished closing') ||
+                   msg.includes('GL version:') ||
+                   msg.includes('OpenGL error checking');
+          }
+          return false;
+        };
+        
+        console.log = (...args) => {
+          if (filterMediaPipeLog(args)) return;
+          originalConsoleLog.apply(console, args);
+        };
+        console.info = (...args) => {
+          if (filterMediaPipeLog(args)) return;
+          originalConsoleInfo.apply(console, args);
+        };
+        console.warn = (...args) => {
+          if (filterMediaPipeLog(args)) return;
+          originalConsoleWarn.apply(console, args);
+        };
+        console.error = (...args) => {
+          if (filterMediaPipeLog(args)) return;
+          originalConsoleError.apply(console, args);
+        };
+        
+        setIsWarmedUp(true);
+        
         setInitProgress(100);
         setStatus('✅ 準備完了！カメラまたは写真でテストしてください');
         
@@ -90,9 +154,10 @@ export default function FaceLandmarkTester() {
     initializeMediaPipe();
   }, []);
 
+
   // カメラ機能
   const toggleCamera = useCallback(async () => {
-    if (!faceLandmarker) return;
+    if (!faceLandmarkerVideo) return;
 
     if (isRunning) {
       setIsRunning(false);
@@ -132,11 +197,11 @@ export default function FaceLandmarkTester() {
       console.error('カメラアクセスエラー:', error);
       setStatus('❌ カメラアクセスが拒否されました。HTTPSまたはlocalhostでお試しください。');
     }
-  }, [faceLandmarker, isRunning]);
+  }, [faceLandmarkerVideo, isRunning]);
 
   // リアルタイム顔検出
   const detectFaceFromVideo = useCallback(() => {
-    if (!videoRef.current || !canvasRef.current || !faceLandmarker || !isRunning) {
+    if (!videoRef.current || !canvasRef.current || !faceLandmarkerVideo || !isRunning) {
       return;
     }
 
@@ -152,7 +217,8 @@ export default function FaceLandmarkTester() {
     const startTime = performance.now();
     
     try {
-      const results = faceLandmarker.detectForVideo(video, startTime);
+      // VIDEO用のFaceLandmarkerを直接使用
+      const results = faceLandmarkerVideo.detectForVideo(video, startTime);
       const processingTime = performance.now() - startTime;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -172,59 +238,163 @@ export default function FaceLandmarkTester() {
     if (isRunning) {
       requestAnimationFrame(detectFaceFromVideo);
     }
-  }, [faceLandmarker, isRunning]);
+  }, [faceLandmarkerVideo, isRunning]);
 
   // 写真アップロード処理
   const handlePhotoUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !faceLandmarker) return;
+    if (!file || !faceLandmarkerImage) return;
+
+    console.log('🔍 画像アップロード開始:', {
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size,
+      lastModified: new Date(file.lastModified).toLocaleString()
+    });
+
+    // HEIC形式の検出とエラーメッセージ
+    if (file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif')) {
+      console.warn('❌ HEIC/HEIF形式はサポートされていません');
+      alert('申し訳ございませんが、HEIC/HEIF形式はサポートされていません。JPG、PNG、GIF形式の画像をご利用ください。');
+      return;
+    }
 
     if (!file.type.startsWith('image/')) {
+      console.warn('❌ 画像ファイルではありません:', file.type);
       alert('画像ファイル（JPG, PNG, GIF等）を選択してください');
       return;
     }
 
     if (file.size > 10 * 1024 * 1024) {
+      console.warn('❌ ファイルサイズが大きすぎます:', file.size);
       alert('ファイルサイズが大きすぎます（10MB以下にしてください）');
       return;
     }
 
     if (isRunning) {
+      console.log('📹 カメラを停止してから写真モードに切り替え');
       toggleCamera();
     }
 
     setDetectionMode('photo');
-    setIsAnalyzing(true);
     setPhotoFeatures(null);
-    setStatus('📷 写真を解析中...');
+    setStatus('📷 写真をアップロード中...');
 
+    console.log('📁 FileReader読み込み開始');
     const reader = new FileReader();
     reader.onload = async (e) => {
       const imageSrc = e.target?.result as string;
+      console.log('✅ FileReader完了:', {
+        fileType: file.type,
+        fileSize: file.size,
+        resultType: typeof imageSrc,
+        resultLength: imageSrc?.length,
+        resultPrefix: imageSrc?.substring(0, 50)
+      });
       setUploadedImage(imageSrc);
+      setStatus('✅ 写真をアップロードしました。解析を開始するには下のボタンを押してください。');
 
+      console.log('🖼️ 画像要素の読み込み開始');
       const img = new Image();
       img.onload = async () => {
-        await analyzePhoto(img);
+        console.log('✅ 画像読み込み完了:', {
+          width: img.width,
+          height: img.height,
+          naturalWidth: img.naturalWidth,
+          naturalHeight: img.naturalHeight
+        });
       };
-      img.onerror = () => {
+      img.onerror = (error) => {
+        console.error('❌ 画像読み込み失敗:', error);
+        console.error('imageSrc details:', {
+          length: imageSrc?.length,
+          preview: imageSrc?.substring(0, 100)
+        });
         setStatus('❌ 画像の読み込みに失敗しました');
-        setIsAnalyzing(false);
       };
       img.src = imageSrc;
     };
+    reader.onerror = (error) => {
+      console.error('❌ ファイル読み込み失敗:', error);
+      setStatus('❌ ファイルの読み込みに失敗しました');
+    };
     reader.readAsDataURL(file);
-  }, [faceLandmarker, isRunning, toggleCamera]);
+  }, [faceLandmarkerImage, isRunning, toggleCamera]);
+
+  // 解析開始処理
+  const startAnalysis = useCallback(async () => {
+    if (!uploadedImage || !faceLandmarkerImage) {
+      console.error('❌ 解析開始失敗: 画像またはfaceLandmarkerImageがありません', {
+        hasImage: !!uploadedImage,
+        hasFaceLandmarkerImage: !!faceLandmarkerImage
+      });
+      return;
+    }
+    
+    console.log('🚀 AI解析開始');
+    setIsAnalyzing(true);
+    setAnalysisProgress(0);
+    setAnalysisStep('画像準備中...');
+    setStatus('🔍 AI解析実行中...');
+    
+    const img = new Image();
+    img.onload = async () => {
+      console.log('📸 解析用画像読み込み完了, MediaPipe処理開始');
+      setAnalysisProgress(20);
+      setAnalysisStep('MediaPipe処理開始...');
+      await analyzePhoto(img);
+    };
+    img.onerror = (error) => {
+      console.error('❌ 解析用画像読み込み失敗:', error);
+      setStatus('❌ 画像の読み込みに失敗しました');
+      setIsAnalyzing(false);
+      setAnalysisProgress(0);
+      setAnalysisStep('');
+    };
+    img.src = uploadedImage;
+  }, [uploadedImage, faceLandmarkerImage]);
 
   // 写真解析処理
   const analyzePhoto = useCallback(async (imageElement: HTMLImageElement) => {
-    if (!faceLandmarker || !photoCanvasRef.current) return;
+    console.log('🔍 analyzePhoto関数開始', {
+      hasFaceLandmarkerImage: !!faceLandmarkerImage,
+      hasCanvas: !!photoCanvasRef.current,
+      faceLandmarkerType: typeof faceLandmarkerImage,
+      canvasRefType: typeof photoCanvasRef.current
+    });
+
+    if (!faceLandmarkerImage) {
+      console.error('❌ faceLandmarkerImageがありません');
+      setStatus('❌ AI解析モデル（IMAGE）が初期化されていません');
+      setIsAnalyzing(false);
+      return;
+    }
+
+    if (!photoCanvasRef.current) {
+      console.error('❌ photoCanvasがありません');
+      setStatus('❌ Canvas要素が見つかりません');
+      setIsAnalyzing(false);
+      return;
+    }
 
     const canvas = photoCanvasRef.current;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      console.error('❌ Canvas 2Dコンテキストの取得に失敗');
+      return;
+    }
 
     try {
+      console.log('🖼️ 画像処理開始:', {
+        originalWidth: imageElement.width,
+        originalHeight: imageElement.height,
+        naturalWidth: imageElement.naturalWidth,
+        naturalHeight: imageElement.naturalHeight
+      });
+
+      setAnalysisProgress(30);
+      setAnalysisStep('画像サイズ調整中...');
+
       const maxWidth = 1024;
       const maxHeight = 1024;
       let { width, height } = imageElement;
@@ -233,36 +403,99 @@ export default function FaceLandmarkTester() {
         const scale = Math.min(maxWidth / width, maxHeight / height);
         width *= scale;
         height *= scale;
+        console.log('📏 画像サイズ調整:', {
+          originalSize: `${imageElement.width}x${imageElement.height}`,
+          scale: scale,
+          newSize: `${width}x${height}`
+        });
       }
+
+      setAnalysisProgress(40);
+      setAnalysisStep('Canvas準備中...');
 
       canvas.width = width;
       canvas.height = height;
       ctx.drawImage(imageElement, 0, 0, width, height);
+      console.log('✅ Canvasに画像描画完了');
 
-      setStatus('🔍 AI解析実行中...');
+      setAnalysisProgress(50);
+      setAnalysisStep('MediaPipe AI解析実行中...');
+      setStatus('🔍 MediaPipe AI解析実行中...');
+      console.log('🧠 MediaPipe顔検出処理開始');
       const startTime = performance.now();
       
-      const results = faceLandmarker.detect(imageElement);
+      // IMAGE用のFaceLandmarkerを直接使用（モード切り替え不要）
+      console.log('🔍 IMAGE用FaceLandmarkerで顔検出実行中...', {
+        isWarmedUp,
+        expectedFastProcessing: isWarmedUp
+      });
+      
+      const results = faceLandmarkerImage.detect(imageElement);
       const processingTime = performance.now() - startTime;
+      console.log('✅ MediaPipe顔検出完了', {
+        processingTime: `${processingTime.toFixed(2)}ms`,
+        wasWarmedUp: isWarmedUp
+      });
+      
+      console.log('📊 MediaPipe解析完了:', {
+        processingTime: `${processingTime.toFixed(2)}ms`,
+        facesDetected: results.faceLandmarks?.length || 0,
+        hasResults: !!(results.faceLandmarks && results.faceLandmarks.length > 0)
+      });
+
+      setAnalysisProgress(70);
+      setAnalysisStep('顔検出結果処理中...');
 
       if (results.faceLandmarks && results.faceLandmarks.length > 0) {
         const landmarks = results.faceLandmarks[0];
+        console.log('✅ 顔検出成功:', {
+          landmarkCount: landmarks.length,
+          firstLandmark: landmarks[0],
+          lastLandmark: landmarks[landmarks.length - 1]
+        });
+        
+        setAnalysisProgress(80);
+        setAnalysisStep('ランドマーク描画中...');
+        console.log('🎨 ランドマーク描画開始');
         drawLandmarks(ctx, landmarks, width, height);
+        
+        setAnalysisProgress(90);
+        setAnalysisStep('特徴量計算中...');
+        console.log('📐 特徴量計算開始');
         const calculatedFeatures = calculateDetailedFeatures(landmarks, processingTime);
+        console.log('✅ 特徴量計算完了:', calculatedFeatures);
+        
+        setAnalysisProgress(100);
+        setAnalysisStep('解析完了');
         setPhotoFeatures(calculatedFeatures);
         setStatus(`✅ 顔検出成功！${landmarks.length}個のランドマーク点を検出`);
       } else {
+        console.warn('❌ 顔が検出されませんでした');
+        setAnalysisProgress(100);
+        setAnalysisStep('顔検出失敗');
         setPhotoFeatures(null);
         setStatus('❌ 顔が検出されませんでした。明るく正面を向いた写真をお試しください。');
       }
       
     } catch (error) {
-      console.error('写真解析エラー:', error);
+      console.error('❌ 写真解析エラー:', error);
+      console.error('エラー詳細:', {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
       setStatus('❌ 写真の解析に失敗しました');
+      setAnalysisProgress(0);
+      setAnalysisStep('エラー発生');
     } finally {
+      console.log('🏁 解析処理完了');
       setIsAnalyzing(false);
+      setTimeout(() => {
+        setAnalysisProgress(0);
+        setAnalysisStep('');
+      }, 2000);
     }
-  }, [faceLandmarker]);
+  }, [faceLandmarkerImage]);
 
   // 詳細特徴量計算
   const calculateDetailedFeatures = (landmarks: any[], processingTime: number): FaceFeatures => {
@@ -477,7 +710,7 @@ export default function FaceLandmarkTester() {
         </div>
       )}
 
-      {faceLandmarker && (
+      {faceLandmarkerVideo && faceLandmarkerImage && (
         <>
           <div className="text-center mb-8">
             <div className={`inline-block px-6 py-3 rounded-full text-lg font-semibold ${
@@ -522,29 +755,71 @@ export default function FaceLandmarkTester() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
                   onChange={handlePhotoUpload}
                   className="hidden"
                 />
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={!faceLandmarker || isAnalyzing}
+                  disabled={!faceLandmarkerImage || isAnalyzing}
                   className="px-10 py-4 bg-green-500 hover:bg-green-600 disabled:bg-gray-400 text-white rounded-xl font-bold text-lg disabled:cursor-not-allowed transform hover:scale-105 transition-all duration-200 shadow-lg"
                 >
                   {isAnalyzing ? '🔄 解析中...' : '📁 写真を選択してアップロード'}
                 </button>
                 <p className="text-sm text-gray-600 mt-2">
-                  JPG, PNG, GIF対応 / 最大10MB
+                  JPG, PNG, GIF, WebP対応 / 最大10MB (HEIC/HEIF非対応)
                 </p>
               </div>
 
               {uploadedImage && (
                 <div className="flex justify-center mb-6">
                   <div className="relative max-w-4xl">
-                    <canvas
-                      ref={photoCanvasRef}
-                      className="border-4 border-green-300 rounded-lg shadow-xl max-w-full h-auto"
-                    />
+                    {!photoFeatures && (
+                      <div className="relative">
+                        <img
+                          src={uploadedImage}
+                          alt="アップロードされた画像"
+                          className="border-4 border-gray-300 rounded-lg shadow-xl max-w-full h-auto"
+                          style={{ maxHeight: '600px' }}
+                        />
+                        {!isAnalyzing && (
+                          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
+                            <button
+                              onClick={() => startAnalysis()}
+                              className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 transform hover:scale-105"
+                            >
+                              🔍 顔解析を開始
+                            </button>
+                          </div>
+                        )}
+                        {isAnalyzing && (
+                          <div className="absolute inset-0 bg-black bg-opacity-20 rounded-lg flex items-center justify-center">
+                            <div className="bg-white bg-opacity-95 px-6 py-4 rounded-lg text-gray-700 font-semibold max-w-sm w-full mx-4">
+                              <div className="text-center mb-3">
+                                <div className="text-lg mb-1">🔄 解析中...</div>
+                                <div className="text-sm text-gray-600">{analysisStep}</div>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-3">
+                                <div 
+                                  className="bg-blue-500 h-3 rounded-full transition-all duration-300"
+                                  style={{ width: `${analysisProgress}%` }}
+                                ></div>
+                              </div>
+                              <div className="text-center mt-2 text-sm text-gray-600">
+                                {analysisProgress}%
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {(photoFeatures || isAnalyzing) && (
+                      <canvas
+                        ref={photoCanvasRef}
+                        className="border-4 border-green-300 rounded-lg shadow-xl max-w-full h-auto"
+                        style={{ display: photoFeatures ? 'block' : 'none' }}
+                      />
+                    )}
                   </div>
                 </div>
               )}
@@ -575,7 +850,7 @@ export default function FaceLandmarkTester() {
               <div className="text-center">
                 <button
                   onClick={toggleCamera}
-                  disabled={!faceLandmarker}
+                  disabled={!faceLandmarkerVideo}
                   className={`px-10 py-4 rounded-xl font-bold text-lg transition-all duration-200 ${
                     isRunning 
                       ? 'bg-red-500 hover:bg-red-600 text-white shadow-lg' 
@@ -666,6 +941,16 @@ export default function FaceLandmarkTester() {
             <h3 className="font-bold text-yellow-800 mb-4 text-xl">
               📋 ローカルテスト時の重要なポイント
             </h3>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <h4 className="font-bold text-blue-700 mb-2">
+                💡 開発者コンソールについて
+              </h4>
+              <p className="text-sm text-blue-700">
+                コンソールに表示される「INFO: Created TensorFlow Lite XNNPACK delegate for CPU」や
+                「Graph successfully started running」などのメッセージは、MediaPipeの正常な動作ログです。
+                エラーではありませんのでご安心ください。
+              </p>
+            </div>
             <div className="grid md:grid-cols-2 gap-6">
               <div className="bg-white p-4 rounded-lg">
                 <h4 className="font-bold text-green-700 mb-2">
