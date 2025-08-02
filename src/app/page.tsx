@@ -66,8 +66,9 @@ export default function FaceLandmarkTester() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [showVRM, setShowVRM] = useState(false);
   
-  // Camera State
+  // Camera State（将来の使用に備えて保持）
   const [isRunning, setIsRunning] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [cameraFeatures, setCameraFeatures] = useState<FaceFeatures | null>(null);
   
   // Photo State
@@ -943,29 +944,12 @@ export default function FaceLandmarkTester() {
             </div>
           </div>
 
-          {/* モード選択タブ */}
+          {/* モード選択タブ（写真モードのみ） */}
           <div className="flex justify-center mb-8">
             <div className="bg-white rounded-xl p-1 shadow-lg">
-              <button
-                onClick={() => setDetectionMode('photo')}
-                className={`px-8 py-3 rounded-lg font-semibold transition-all duration-200 ${
-                  detectionMode === 'photo'
-                    ? 'bg-green-500 text-white shadow-lg transform scale-105'
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                📷 写真アップロード（推奨）
-              </button>
-              <button
-                onClick={() => setDetectionMode('camera')}
-                className={`px-8 py-3 rounded-lg font-semibold transition-all duration-200 ${
-                  detectionMode === 'camera'
-                    ? 'bg-blue-500 text-white shadow-lg transform scale-105'
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                📹 リアルタイムカメラ
-              </button>
+              <div className="px-8 py-3 rounded-lg font-semibold bg-green-500 text-white shadow-lg">
+                📷 写真アップロードモード
+              </div>
             </div>
           </div>
 
@@ -1047,51 +1031,15 @@ export default function FaceLandmarkTester() {
             </div>
           )}
 
-          {/* カメラモード */}
-          {detectionMode === 'camera' && (
-            <div className="mb-8">
-              <div className="flex justify-center mb-6">
-                <div className="relative">
-                  <video
-                    ref={videoRef}
-                    className="absolute inset-0 w-full h-full object-cover rounded-lg"
-                    autoPlay
-                    playsInline
-                    muted
-                  />
-                  <canvas
-                    ref={canvasRef}
-                    className="relative z-10 border-4 border-blue-300 rounded-lg shadow-xl"
-                    width={640}
-                    height={480}
-                  />
-                </div>
-              </div>
-
-              <div className="text-center">
-                <button
-                  onClick={toggleCamera}
-                  disabled={!faceLandmarkerVideo}
-                  className={`px-10 py-4 rounded-xl font-bold text-lg transition-all duration-200 ${
-                    isRunning 
-                      ? 'bg-red-500 hover:bg-red-600 text-white shadow-lg' 
-                      : 'bg-blue-500 hover:bg-blue-600 text-white shadow-lg'
-                  } disabled:bg-gray-400 disabled:cursor-not-allowed transform hover:scale-105`}
-                >
-                  {isRunning ? '🛑 カメラ停止' : '🎬 カメラ起動'}
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* 検出結果表示 */}
-          {((detectionMode === 'camera' && cameraFeatures) || (detectionMode === 'photo' && photoFeatures)) && (
+          {(detectionMode === 'photo' && photoFeatures) && (
             <>
               <div className="bg-white rounded-2xl p-8 mb-8 shadow-xl">
                 <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">🎯 検出された顔特徴量</h2>
               
               {(() => {
-                const currentFeatures = detectionMode === 'camera' ? cameraFeatures : photoFeatures;
+                const currentFeatures = photoFeatures;
                 const adjustments = currentFeatures ? predictVRMAdjustments(currentFeatures) : null;
                 
                 return (
@@ -1219,7 +1167,7 @@ export default function FaceLandmarkTester() {
                   </div>
                   <div style={{ height: '500px' }}>
                     <VRMViewer 
-                      faceFeatures={detectionMode === 'camera' ? cameraFeatures : photoFeatures}
+                      faceFeatures={photoFeatures}
                     />
                   </div>
                 </div>
@@ -1242,31 +1190,18 @@ export default function FaceLandmarkTester() {
                 エラーではありませんのでご安心ください。
               </p>
             </div>
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="bg-white p-4 rounded-lg">
-                <h4 className="font-bold text-green-700 mb-2">
-                  📷 写真モード（推奨）
-                </h4>
-                <ul className="text-sm text-gray-700 space-y-1">
-                  <li>• 高精度な特徴量測定が可能</li>
-                  <li>• VRM調整予測の詳細確認</li>
-                  <li>• HTTP環境でも動作</li>
-                  <li>• 様々な人物での比較テスト</li>
-                  <li>• ファイルサイズ: 最大10MB</li>
-                </ul>
-              </div>
-              <div className="bg-white p-4 rounded-lg">
-                <h4 className="font-bold text-blue-700 mb-2">
-                  📹 カメラモード
-                </h4>
-                <ul className="text-sm text-gray-700 space-y-1">
-                  <li>• リアルタイムでの数値変化確認</li>
-                  <li>• 表情・角度変化のテスト</li>
-                  <li>• localhost環境でも動作可能</li>
-                  <li>• ブラウザでカメラ許可が必要</li>
-                  <li>• 処理速度・安定性の評価</li>
-                </ul>
-              </div>
+            <div className="bg-white p-4 rounded-lg">
+              <h4 className="font-bold text-green-700 mb-3">
+                📷 写真モードの特徴
+              </h4>
+              <ul className="text-sm text-gray-700 space-y-2">
+                <li>• <strong>高精度な特徴量測定:</strong> 17種類の詳細な顔特徴を正確に分析</li>
+                <li>• <strong>客観的特徴説明:</strong> 検出データに基づく日本語説明を自動生成</li>
+                <li>• <strong>VRM調整予測:</strong> BlendShape適用値の詳細プレビュー</li>
+                <li>• <strong>対応形式:</strong> JPG, PNG, GIF, WebP（最大10MB）</li>
+                <li>• <strong>環境要件:</strong> HTTP/HTTPS環境で動作</li>
+                <li>• <strong>テスト活用:</strong> 様々な人物での比較・検証が可能</li>
+              </ul>
             </div>
           </div>
         </>
