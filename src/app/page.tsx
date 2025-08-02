@@ -15,7 +15,7 @@ interface FaceFeatures {
   noseWidth: number;
   noseHeight: number;
   noseProjection: number; // 鼻の3D突出度（z座標を活用）
-  cheekFullness: number; // 頬のふくらみ（肉付き）
+  cheekFullness: number; // 頬骨の突出度（頬骨の立体感）
   mouthWidth: number;
   mouthHeight: number;
   lipThickness: number; // 唇の厚み（上唇と下唇の平均厚み）
@@ -607,13 +607,13 @@ export default function FaceLandmarkTester() {
       // 仕様書準拠: z座標を活用した3D突出度
       const noseProjection = noseTip.z ? Math.abs(noseTip.z) : 0;
 
-      // 仕様書準拠: 頬のふくらみ計算（正規化）
+      // 仕様書準拠: 頬骨の突出度計算（正規化）
       const leftCheek = landmarks[234];   // 左頬の最外側
       const rightCheek = landmarks[454];  // 右頬の最外側  
       const faceLeftEdge = landmarks[172]; // 顔の左端（顎角付近）
       const faceRightEdge = landmarks[397]; // 顔の右端（顎角付近）
       
-      // 正規化済み頬の膨らみ
+      // 正規化済み頬骨の突出度
       const leftCheekFullness = Math.hypot(
         leftCheek.x - faceLeftEdge.x,
         leftCheek.y - faceLeftEdge.y
@@ -765,6 +765,54 @@ export default function FaceLandmarkTester() {
     return adjustments;
   };
 
+  // 複合的な体型判定スコア計算
+  const calculateBodyTypeScore = (features: FaceFeatures): number => {
+    let score = 0;
+
+    try {
+      // 条件1: 顔の縦横比による判定
+      if (features.faceAspectRatio < 0.95) {
+        // 横に広い丸顔なら「ふくよか」スコア+1
+        score++;
+      } else if (features.faceAspectRatio > 1.15) {
+        // 縦に長い面長なら「痩せ」スコア-1
+        score--;
+      }
+
+      // 条件2: 顎のラインによる判定
+      if (features.jawSharpness < 0.3) {
+        // 顎が丸ければ「ふくよか」スコア+1
+        score++;
+      } else if (features.jawSharpness > 0.6) {
+        // 顎がシャープなら「痩せ」スコア-1
+        score--;
+      }
+
+      // 条件3: 頬骨の突出度（これは痩せ型の特徴として解釈）
+      if (features.cheekFullness > 0.4) {
+        // 頬骨が出ていれば「痩せ」スコア-1
+        score--;
+      } else if (features.cheekFullness < 0.2) {
+        // 頬骨が控えめなら「ふくよか」スコア+1
+        score++;
+      }
+
+      // 条件4: 両目の間隔（ふくよかな人は相対的に狭くなる傾向）
+      if (features.interocularDistance < 0.28) {
+        // 目の間隔が狭めなら「ふくよか」スコア+1
+        score++;
+      } else if (features.interocularDistance > 0.35) {
+        // 目の間隔が広めなら「痩せ」スコア-1
+        score--;
+      }
+
+    } catch (error) {
+      console.error('体型判定スコア計算エラー:', error);
+    }
+
+    return score;
+  };
+
   // 客観的日本語顔特徴説明生成
   const generateFaceDescription = (features: FaceFeatures): string[] => {
     const descriptions: string[] = [];
@@ -846,11 +894,11 @@ export default function FaceLandmarkTester() {
         descriptions.push("丸い顎");
       }
 
-      // 頬のふくらみ判定
+      // 頬骨の突出度判定（名称を正確に修正）
       if (features.cheekFullness > 0.15) {
-        descriptions.push("ふっくらした頬");
+        descriptions.push("頬骨が際立っている");
       } else if (features.cheekFullness < 0.1) {
-        descriptions.push("すっきりした頬");
+        descriptions.push("頬骨が控えめ");
       }
 
       // 鼻の突出度判定（3D情報活用）
@@ -858,6 +906,16 @@ export default function FaceLandmarkTester() {
         descriptions.push("立体的な鼻");
       } else if (features.noseProjection < 0.01) {
         descriptions.push("平坦な鼻");
+      }
+
+      // 複合的な体型判定ロジック（複数パラメータを組み合わせ）
+      const bodyTypeScore = calculateBodyTypeScore(features);
+      if (bodyTypeScore >= 2) {
+        descriptions.push("ふくよか傾向");
+      } else if (bodyTypeScore <= -2) {
+        descriptions.push("痩せ型傾向");
+      } else {
+        descriptions.push("標準体型");
       }
 
     } catch (error) {
@@ -945,13 +1003,13 @@ export default function FaceLandmarkTester() {
           </div>
 
           {/* モード選択タブ（写真モードのみ） */}
-          <div className="flex justify-center mb-8">
+          {/* <div className="flex justify-center mb-8">
             <div className="bg-white rounded-xl p-1 shadow-lg">
               <div className="px-8 py-3 rounded-lg font-semibold bg-green-500 text-white shadow-lg">
                 📷 写真アップロードモード
               </div>
             </div>
-          </div>
+          </div> */}
 
           {/* 写真アップロードモード */}
           {detectionMode === 'photo' && (
@@ -1058,7 +1116,7 @@ export default function FaceLandmarkTester() {
                         { label: '唇の厚み', param: 'lipThick', value: currentFeatures?.lipThickness, color: 'red' },
                         { label: '顎の尖り具合', param: 'jawAngle', value: currentFeatures?.jawSharpness, color: 'purple' },
                         { label: '鼻の突出度', value: currentFeatures?.noseProjection, color: 'green' },
-                        { label: '頬のふくらみ', value: currentFeatures?.cheekFullness, color: 'orange' },
+                        { label: '頬骨の突出度', value: currentFeatures?.cheekFullness, color: 'orange' },
                         { label: '処理時間', value: `${currentFeatures?.processingTime}ms`, color: 'gray' }
                       ].map((item, index) => {
                         const rawValue = typeof item.value === 'number' ? item.value : 0;
