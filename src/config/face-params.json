@@ -1,0 +1,82 @@
+{
+  "faceRatio": {
+    "param": "faceAspectRatio",
+    "gain": 1.0,
+    "offset": -1.0,
+    "clip": [0, 1],
+    "range": [0.9, 1.6],
+    "description": "顔の縦横比（0.9-1.6想定）"
+  },
+  "eyeTilt": {
+    "param": "eyeSlantAngle", 
+    "gain": 0.033,
+    "offset": 0.5,
+    "clip": [0, 1],
+    "range": [-15, 15],
+    "description": "目の傾斜角度（-15°～+15°想定）"
+  },
+  "browTilt": {
+    "param": "browAngle",
+    "gain": 0.025,
+    "offset": 0.5,
+    "clip": [0, 1], 
+    "range": [-20, 20],
+    "description": "眉の角度（-20°～+20°想定）"
+  },
+  "browY": {
+    "param": "browHeight",
+    "gain": 10.0,
+    "offset": -0.5,
+    "clip": [0, 1],
+    "range": [0.05, 0.15],
+    "description": "眉の高さ（0.05-0.15想定）"
+  },
+  "eyeGap": {
+    "param": "interocularDistance",
+    "gain": 6.67,
+    "offset": -1.67,
+    "clip": [0, 1],
+    "range": [0.25, 0.40],
+    "description": "両目の間隔（0.25-0.40想定）"
+  },
+  "noseWidth": {
+    "param": "noseWidth",
+    "gain": 7.69,
+    "offset": -0.92,
+    "clip": [0, 1],
+    "range": [0.12, 0.25],
+    "description": "鼻の幅（0.12-0.25想定）"
+  },
+  "noseLength": {
+    "param": "noseHeight",
+    "gain": 12.5,
+    "offset": -1.0,
+    "clip": [0, 1],
+    "range": [0.08, 0.16],
+    "description": "鼻の高さ（0.08-0.16想定）"
+  },
+  "mouthWidth": {
+    "param": "mouthWidth",
+    "gain": 4.0,
+    "offset": -1.0,
+    "clip": [0, 1],
+    "range": [0.25, 0.50],
+    "description": "口の幅（0.25-0.50想定）"
+  },
+  "lipThick": {
+    "param": "lipThickness",
+    "gain": 33.33,
+    "offset": -0.33,
+    "clip": [0, 1],
+    "range": [0.01, 0.04],
+    "description": "唇の厚み（0.01-0.04想定）"
+  },
+  "jawAngle": {
+    "param": "jawSharpness",
+    "gain": 1.0,
+    "offset": 0.0,
+    "clip": [0, 1],
+    "range": [0, 1],
+    "description": "顎の尖り具合（0-1想定）"
+  }
+}

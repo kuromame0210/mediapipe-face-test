@@ -9,11 +9,18 @@ interface FaceFeatures {
   eyeWidth: number;
   eyeHeight: number;
   eyeAspectRatio: number;
+  eyeSlantAngle: number; // 目の傾斜角度（正:つり目、負:たれ目）
+  browHeight: number; // 眉の高さ（目からの距離）
+  browAngle: number; // 眉の角度（正:上がり眉、負:下がり眉）
   noseWidth: number;
   noseHeight: number;
+  noseProjection: number; // 鼻の3D突出度（z座標を活用）
+  cheekFullness: number; // 頬のふくらみ（肉付き）
   mouthWidth: number;
   mouthHeight: number;
+  lipThickness: number; // 唇の厚み（上唇と下唇の平均厚み）
   faceAspectRatio: number;
+  jawSharpness: number; // 顎の尖り具合（高い値ほどシャープ）
   interocularDistance: number;
   processingTime: number;
 }
@@ -288,6 +295,58 @@ export default function VRMViewer({ faceFeatures }: VRMViewerProps) {
       }
       if (availableExpressions.includes('relaxed')) {
         adjustments.relaxed = Math.min((1 - eyeRatio) * 0.4, 1.0);
+      }
+    }
+
+    // 目の傾斜角度をBlendShapeにマッピング
+    if (features.eyeSlantAngle > 2) {
+      // つり目
+      if (availableExpressions.includes('angry')) {
+        adjustments.angry = Math.min(features.eyeSlantAngle / 10, 0.6);
+      }
+    } else if (features.eyeSlantAngle < -2) {
+      // たれ目
+      if (availableExpressions.includes('sad')) {
+        adjustments.sad = Math.min(Math.abs(features.eyeSlantAngle) / 10, 0.5);
+      }
+    }
+
+    // 眉の角度をBlendShapeにマッピング
+    // 眉の角度が-180度に近い場合は下がり眉
+    const browAngleNormalized = Math.abs(features.browAngle + 180);
+    if (browAngleNormalized < 30) {
+      // 下がり眉 → sadやtroubledを適用
+      if (availableExpressions.includes('sad')) {
+        adjustments.sad = Math.max(adjustments.sad || 0, Math.min((30 - browAngleNormalized) / 30 * 0.4, 0.6));
+      }
+      if (availableExpressions.includes('troubled')) {
+        adjustments.troubled = Math.min((30 - browAngleNormalized) / 30 * 0.5, 0.7);
+      }
+    }
+
+    // 唇の厚みをBlendShapeにマッピング
+    if (features.lipThickness < 0.008) {
+      // 薄い唇
+      if (availableExpressions.includes('neutral')) {
+        adjustments.neutral = Math.min((0.008 - features.lipThickness) / 0.008 * 0.3, 0.4);
+      }
+    } else if (features.lipThickness > 0.015) {
+      // 厚い唇
+      if (availableExpressions.includes('aa')) {
+        adjustments.aa = Math.min((features.lipThickness - 0.015) / 0.01 * 0.2, 0.3);
+      }
+    }
+
+    // 顎の尖り具合をBlendShapeにマッピング
+    if (features.jawSharpness > 0.7) {
+      // シャープな顎
+      if (availableExpressions.includes('angry')) {
+        adjustments.angry = Math.max(adjustments.angry || 0, Math.min((features.jawSharpness - 0.7) / 0.3 * 0.3, 0.4));
+      }
+    } else if (features.jawSharpness < 0.3) {
+      // 丸い顎
+      if (availableExpressions.includes('happy')) {
+        adjustments.happy = Math.max(adjustments.happy || 0, Math.min((0.3 - features.jawSharpness) / 0.3 * 0.2, 0.3));
       }
     }
 

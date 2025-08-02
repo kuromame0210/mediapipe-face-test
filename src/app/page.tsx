@@ -3,16 +3,24 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import VRMViewer from '@/components/VRMViewer';
+import faceParamsConfig from '@/config/face-params.json';
 
 interface FaceFeatures {
   eyeWidth: number;
   eyeHeight: number;
   eyeAspectRatio: number;
+  eyeSlantAngle: number; // 目の傾斜角度（正:つり目、負:たれ目）
+  browHeight: number; // 眉の高さ（目からの距離）
+  browAngle: number; // 眉の角度（正:上がり眉、負:下がり眉）
   noseWidth: number;
   noseHeight: number;
+  noseProjection: number; // 鼻の3D突出度（z座標を活用）
+  cheekFullness: number; // 頬のふくらみ（肉付き）
   mouthWidth: number;
   mouthHeight: number;
+  lipThickness: number; // 唇の厚み（上唇と下唇の平均厚み）
   faceAspectRatio: number;
+  jawSharpness: number; // 顎の尖り具合（高い値ほどシャープ）
   interocularDistance: number;
   processingTime: number;
 }
@@ -27,6 +35,16 @@ interface VRMAdjustments {
   faceWide: number;
   faceNarrow: number;
 }
+
+// 仕様書準拠: パラメータ正規化関数
+const normalizeParam = (value: number, paramName: string): number => {
+  const config = faceParamsConfig[paramName as keyof typeof faceParamsConfig];
+  if (!config) return Math.max(0, Math.min(1, value));
+  
+  // gain * value + offset の式で 0-1 に変換
+  const normalized = config.gain * value + config.offset;
+  return Math.max(config.clip[0], Math.min(config.clip[1], normalized));
+};
 
 type DetectionMode = 'camera' | 'photo';
 
@@ -498,101 +516,193 @@ export default function FaceLandmarkTester() {
     }
   }, [faceLandmarkerImage]);
 
-  // 詳細特徴量計算
+  // 詳細特徴量計算（仕様書準拠）
   const calculateDetailedFeatures = (landmarks: Array<{x: number, y: number, z?: number}>, processingTime: number): FaceFeatures => {
     try {
+      // 仕様書準拠: 顔のベース寸法を最初に計算
+      const faceTop = landmarks[10];       // 顔上端
+      const faceBottom = landmarks[152];   // 顔下端（顎先）
+      const faceLeft = landmarks[234];     // 顔左端
+      const faceRight = landmarks[454];    // 顔右端
+      
+      const faceWidth = Math.abs(faceRight.x - faceLeft.x);
+      const faceHeight = Math.abs(faceBottom.y - faceTop.y);
+      const faceAspectRatio = faceHeight / faceWidth; // 仕様書のfaceRatio相当
+
       // 目の特徴（左目基準）
       const leftEyeOuter = landmarks[33];
       const leftEyeInner = landmarks[133];
       const leftEyeTop = landmarks[159];
       const leftEyeBottom = landmarks[145];
 
+      // 仕様書準拠: 目の特徴を正規化して計算
       const eyeWidth = Math.hypot(
         leftEyeOuter.x - leftEyeInner.x,
         leftEyeOuter.y - leftEyeInner.y
-      );
+      ) / faceWidth; // 正規化
 
       const eyeHeight = Math.hypot(
         leftEyeTop.x - leftEyeBottom.x,
         leftEyeTop.y - leftEyeBottom.y
-      );
+      ) / faceHeight; // 正規化
 
       const eyeAspectRatio = eyeHeight / eyeWidth;
 
-      // 両目の間隔
+      // 仕様書準拠: 目の傾斜角度計算（eyeTilt）
+      // 推定レンジ: -15°～+15°
       const rightEyeInner = landmarks[362];
+      const eyeSlantAngle = Math.atan2(
+        rightEyeInner.y - leftEyeInner.y,
+        rightEyeInner.x - leftEyeInner.x
+      ) * (180 / Math.PI);
+
+      // 両目の間隔（正規化）
       const interocularDistance = Math.hypot(
         leftEyeInner.x - rightEyeInner.x,
         leftEyeInner.y - rightEyeInner.y
-      );
+      ) / faceWidth; // eyeGap相当
 
-      // 鼻の特徴
-      const noseLeft = landmarks[131];
-      const noseRight = landmarks[360];
+      // 仕様書準拠: 眉の特徴計算
+      const leftBrowInner = landmarks[70];  // 左眉内側
+      const leftBrowMiddle = landmarks[107]; // 左眉中央
+      const leftBrowOuter = landmarks[55];  // 左眉外側
+      const rightBrowInner = landmarks[300]; // 右眉内側
+      const rightBrowOuter = landmarks[285]; // 右眉外側
+
+      // 仕様書準拠: 眉の高さ（browY）- 正規化済み
+      const browHeight = Math.abs(leftBrowMiddle.y - leftEyeTop.y) / faceHeight;
+
+      // 仕様書準拠: 眉の角度計算（browTilt）
+      // 推定レンジ: -20°～+20°
+      const browAngle = Math.atan2(
+        leftBrowOuter.y - leftBrowInner.y,
+        leftBrowOuter.x - leftBrowInner.x
+      ) * (180 / Math.PI);
+
+      // 仕様書準拠: 鼻の特徴計算
+      const noseLeft = landmarks[97];  // 仕様書推奨の鼻左点
+      const noseRight = landmarks[326]; // 仕様書推奨の鼻右点
       const noseTip = landmarks[1];
-      const noseBridge = landmarks[6];
+      const noseBridge = landmarks[168]; // 仕様書推奨の鼻根点
 
+      // 正規化済み鼻の特徴
       const noseWidth = Math.hypot(
         noseLeft.x - noseRight.x,
         noseLeft.y - noseRight.y
-      );
+      ) / faceWidth; // 推定レンジ: 0.12-0.25
 
       const noseHeight = Math.hypot(
-        noseTip.x - noseBridge.x,
-        noseTip.y - noseBridge.y
-      );
+        noseBridge.x - noseTip.x,
+        noseBridge.y - noseTip.y
+      ) / faceHeight; // noseLength相当
 
-      // 口の特徴
+      // 仕様書準拠: z座標を活用した3D突出度
+      const noseProjection = noseTip.z ? Math.abs(noseTip.z) : 0;
+
+      // 仕様書準拠: 頬のふくらみ計算（正規化）
+      const leftCheek = landmarks[234];   // 左頬の最外側
+      const rightCheek = landmarks[454];  // 右頬の最外側  
+      const faceLeftEdge = landmarks[172]; // 顔の左端（顎角付近）
+      const faceRightEdge = landmarks[397]; // 顔の右端（顎角付近）
+      
+      // 正規化済み頬の膨らみ
+      const leftCheekFullness = Math.hypot(
+        leftCheek.x - faceLeftEdge.x,
+        leftCheek.y - faceLeftEdge.y
+      ) / faceWidth;
+      const rightCheekFullness = Math.hypot(
+        rightCheek.x - faceRightEdge.x,
+        rightCheek.y - faceRightEdge.y
+      ) / faceWidth;
+      const cheekFullness = (leftCheekFullness + rightCheekFullness) / 2;
+
+      // 仕様書準拠: 口の特徴計算
       const mouthLeft = landmarks[61];
       const mouthRight = landmarks[291];
       const mouthTop = landmarks[13];
       const mouthBottom = landmarks[14];
 
+      // 正規化済み口の特徴
       const mouthWidth = Math.hypot(
         mouthLeft.x - mouthRight.x,
         mouthLeft.y - mouthRight.y
-      );
+      ) / faceWidth; // 推定レンジ: 0.25-0.50
 
       const mouthHeight = Math.hypot(
         mouthTop.x - mouthBottom.x,
         mouthTop.y - mouthBottom.y
-      );
+      ) / faceHeight;
 
-      // 顔の輪郭
-      const faceTop = landmarks[10];
-      const faceBottom = landmarks[152];
-      const faceLeft = landmarks[234];
-      const faceRight = landmarks[454];
+      // 仕様書準拠: 唇の厚み計算（正規化）
+      const upperLipTop = landmarks[13];    // 上唇の上端
+      const upperLipBottom = landmarks[12]; // 上唇の下端（唇の境界線）
+      const lowerLipTop = landmarks[15];    // 下唇の上端（唇の境界線）
+      const lowerLipBottom = landmarks[17]; // 下唇の下端
+      
+      // 正規化済み唇の厚み
+      const upperLipThickness = Math.hypot(
+        upperLipTop.x - upperLipBottom.x,
+        upperLipTop.y - upperLipBottom.y
+      ) / faceHeight;
+      
+      const lowerLipThickness = Math.hypot(
+        lowerLipTop.x - lowerLipBottom.x,
+        lowerLipTop.y - lowerLipBottom.y
+      ) / faceHeight;
+      
+      // 推定レンジ: 0.01-0.04
+      const lipThickness = (upperLipThickness + lowerLipThickness) / 2;
 
-      const faceWidth = Math.hypot(
-        faceLeft.x - faceRight.x,
-        faceLeft.y - faceRight.y
-      );
-
-      const faceHeight = Math.hypot(
-        faceTop.x - faceBottom.x,
-        faceTop.y - faceBottom.y
-      );
-
-      const faceAspectRatio = faceHeight / faceWidth;
+      // 仕様書準拠: 顎の角度計算（jawAngle）
+      // 推定レンジ: 60-120°
+      const chinTip = landmarks[152]; // 顎先（仕様書準拠）
+      const leftJaw = landmarks[234];  // 左顎角
+      const rightJaw = landmarks[454]; // 右顎角
+      
+      // 顎の角度を計算（∠(LM234-LM152-LM454)）
+      const leftJawVector = {
+        x: leftJaw.x - chinTip.x,
+        y: leftJaw.y - chinTip.y
+      };
+      const rightJawVector = {
+        x: rightJaw.x - chinTip.x,
+        y: rightJaw.y - chinTip.y
+      };
+      
+      // 両ベクトルの内積から角度を計算
+      const dotProduct = leftJawVector.x * rightJawVector.x + leftJawVector.y * rightJawVector.y;
+      const leftMagnitude = Math.hypot(leftJawVector.x, leftJawVector.y);
+      const rightMagnitude = Math.hypot(rightJawVector.x, rightJawVector.y);
+      const jawAngle = Math.acos(dotProduct / (leftMagnitude * rightMagnitude)) * (180 / Math.PI);
+      
+      // 仕様書準拠: 角度をSharp/Round判定に変換
+      const jawSharpness = jawAngle < 90 ? (90 - jawAngle) / 30 : 0; // 0-1値
 
       return {
         eyeWidth: Number(eyeWidth.toFixed(4)),
         eyeHeight: Number(eyeHeight.toFixed(4)),
         eyeAspectRatio: Number(eyeAspectRatio.toFixed(4)),
+        eyeSlantAngle: Number(eyeSlantAngle.toFixed(2)),
+        browHeight: Number(browHeight.toFixed(4)),
+        browAngle: Number(browAngle.toFixed(2)),
         noseWidth: Number(noseWidth.toFixed(4)),
         noseHeight: Number(noseHeight.toFixed(4)),
+        noseProjection: Number(noseProjection.toFixed(4)),
+        cheekFullness: Number(cheekFullness.toFixed(4)),
         mouthWidth: Number(mouthWidth.toFixed(4)),
         mouthHeight: Number(mouthHeight.toFixed(4)),
+        lipThickness: Number(lipThickness.toFixed(4)),
         faceAspectRatio: Number(faceAspectRatio.toFixed(4)),
+        jawSharpness: Number(jawSharpness.toFixed(3)),
         interocularDistance: Number(interocularDistance.toFixed(4)),
         processingTime: Number(processingTime.toFixed(2))
       };
     } catch (error) {
       console.error('特徴量計算エラー:', error);
       return {
-        eyeWidth: 0, eyeHeight: 0, eyeAspectRatio: 0, noseWidth: 0, noseHeight: 0,
-        mouthWidth: 0, mouthHeight: 0, faceAspectRatio: 0, interocularDistance: 0,
+        eyeWidth: 0, eyeHeight: 0, eyeAspectRatio: 0, eyeSlantAngle: 0, browHeight: 0, browAngle: 0,
+        noseWidth: 0, noseHeight: 0, noseProjection: 0, cheekFullness: 0, mouthWidth: 0, mouthHeight: 0, lipThickness: 0,
+        faceAspectRatio: 0, jawSharpness: 0, interocularDistance: 0,
         processingTime: Number(processingTime.toFixed(2))
       };
     }
@@ -877,26 +987,44 @@ export default function FaceLandmarkTester() {
                 return (
                   <>
                     {/* 特徴量グリッド */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
                       {[
-                        { label: '目の幅', value: currentFeatures?.eyeWidth, color: 'blue' },
-                        { label: '目の高さ', value: currentFeatures?.eyeHeight, color: 'blue' },
-                        { label: '目の縦横比', value: currentFeatures?.eyeAspectRatio, color: 'blue' },
-                        { label: '鼻の幅', value: currentFeatures?.noseWidth, color: 'green' },
-                        { label: '鼻の高さ', value: currentFeatures?.noseHeight, color: 'green' },
-                        { label: '口の幅', value: currentFeatures?.mouthWidth, color: 'red' },
-                        { label: '口の高さ', value: currentFeatures?.mouthHeight, color: 'red' },
-                        { label: '顔の縦横比', value: currentFeatures?.faceAspectRatio, color: 'purple' },
-                        { label: '両目の間隔', value: currentFeatures?.interocularDistance, color: 'orange' },
+                        { label: '顔の縦横比', param: 'faceRatio', value: currentFeatures?.faceAspectRatio, color: 'purple' },
+                        { label: '目の傾斜角度', param: 'eyeTilt', value: currentFeatures?.eyeSlantAngle, unit: '°', color: 'blue' },
+                        { label: '眉の角度', param: 'browTilt', value: currentFeatures?.browAngle, unit: '°', color: 'blue' },
+                        { label: '眉の高さ', param: 'browY', value: currentFeatures?.browHeight, color: 'blue' },
+                        { label: '両目の間隔', param: 'eyeGap', value: currentFeatures?.interocularDistance, color: 'orange' },
+                        { label: '鼻の幅', param: 'noseWidth', value: currentFeatures?.noseWidth, color: 'green' },
+                        { label: '鼻の高さ', param: 'noseLength', value: currentFeatures?.noseHeight, color: 'green' },
+                        { label: '口の幅', param: 'mouthWidth', value: currentFeatures?.mouthWidth, color: 'red' },
+                        { label: '唇の厚み', param: 'lipThick', value: currentFeatures?.lipThickness, color: 'red' },
+                        { label: '顎の尖り具合', param: 'jawAngle', value: currentFeatures?.jawSharpness, color: 'purple' },
+                        { label: '鼻の突出度', value: currentFeatures?.noseProjection, color: 'green' },
+                        { label: '頬のふくらみ', value: currentFeatures?.cheekFullness, color: 'orange' },
                         { label: '処理時間', value: `${currentFeatures?.processingTime}ms`, color: 'gray' }
-                      ].map((item, index) => (
-                        <div key={index} className="bg-white p-4 rounded-xl shadow-md hover:shadow-lg transition-shadow border-2 border-gray-200">
-                          <h3 className={`font-semibold text-${item.color}-600 text-sm mb-1`}>{item.label}</h3>
-                          <p className="text-xl font-mono font-bold text-gray-800">
-                            {typeof item.value === 'number' ? item.value.toFixed(4) : item.value}
-                          </p>
-                        </div>
-                      ))}
+                      ].map((item, index) => {
+                        const rawValue = typeof item.value === 'number' ? item.value : 0;
+                        const morphValue = item.param ? normalizeParam(rawValue, item.param) : null;
+                        
+                        return (
+                          <div key={index} className="bg-white p-3 rounded-xl shadow-md hover:shadow-lg transition-shadow border-2 border-gray-200">
+                            <h3 className={`font-semibold text-${item.color}-600 text-xs mb-1`}>{item.label}</h3>
+                            <div className="space-y-1">
+                              <p className="text-sm font-mono text-gray-800">
+                                {typeof item.value === 'number' ? 
+                                  `${item.value.toFixed(4)}${item.unit || ''}` : 
+                                  item.value
+                                }
+                              </p>
+                              {morphValue !== null && (
+                                <p className="text-xs font-bold text-blue-600">
+                                  morph: {(morphValue * 100).toFixed(0)}%
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
 
                     {/* VRM調整予測 */}
