@@ -1,6 +1,7 @@
 {
   "name": "mediapipe-face-test",
   "version": "0.1.0",
+  "description": "高精度顔特徴分析システム - MediaPipe顔検出による17種類の特徴量測定とVRMアバター生成",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
