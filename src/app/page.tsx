@@ -62,6 +62,10 @@ export default function FaceLandmarkTester() {
   const [status, setStatus] = useState('🚀 AIモデルを初期化中...');
   const [initProgress, setInitProgress] = useState(0);
   
+  // VRM表示制御（将来の使用に備えて保持）
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [showVRM, setShowVRM] = useState(false);
+  
   // Camera State
   const [isRunning, setIsRunning] = useState(false);
   const [cameraFeatures, setCameraFeatures] = useState<FaceFeatures | null>(null);
@@ -255,7 +259,7 @@ export default function FaceLandmarkTester() {
     }
 
     if (isRunning) {
-      requestAnimationFrame(detectFaceFromVideo);
+      requestAnimationFrame(() => detectFaceFromVideo());
     }
   }, [faceLandmarkerVideo, isRunning]);
 
@@ -514,7 +518,7 @@ export default function FaceLandmarkTester() {
         setAnalysisStep('');
       }, 2000);
     }
-  }, [faceLandmarkerImage]);
+  }, [faceLandmarkerImage, isWarmedUp]);
 
   // 詳細特徴量計算（仕様書準拠）
   const calculateDetailedFeatures = (landmarks: Array<{x: number, y: number, z?: number}>, processingTime: number): FaceFeatures => {
@@ -566,7 +570,10 @@ export default function FaceLandmarkTester() {
       const leftBrowInner = landmarks[70];  // 左眉内側
       const leftBrowMiddle = landmarks[107]; // 左眉中央
       const leftBrowOuter = landmarks[55];  // 左眉外側
+      // 将来の使用に備えて保持
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const rightBrowInner = landmarks[300]; // 右眉内側
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const rightBrowOuter = landmarks[285]; // 右眉外側
 
       // 仕様書準拠: 眉の高さ（browY）- 正規化済み
@@ -1065,22 +1072,24 @@ export default function FaceLandmarkTester() {
               })()}
               </div>
 
-              {/* VRMプレビュー */}
-              <div className="bg-white rounded-2xl p-8 mb-8 shadow-xl">
-                <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">
-                  🎭 VRM アバター プレビュー
-                </h2>
-                <div className="bg-gray-50 rounded-xl p-4 mb-4">
-                  <p className="text-center text-gray-600 mb-2">
-                    顔特徴量に基づいてVRMアバターが自動調整されます
-                  </p>
+              {/* VRMプレビューは一時的に非表示（ブレンドシェイプ対応モデル実装まで） */}
+              {false && showVRM && (
+                <div className="bg-white rounded-2xl p-8 mb-8 shadow-xl">
+                  <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">
+                    🎭 VRM アバター プレビュー
+                  </h2>
+                  <div className="bg-gray-50 rounded-xl p-4 mb-4">
+                    <p className="text-center text-gray-600 mb-2">
+                      顔特徴量に基づいてVRMアバターが自動調整されます
+                    </p>
+                  </div>
+                  <div style={{ height: '500px' }}>
+                    <VRMViewer 
+                      faceFeatures={detectionMode === 'camera' ? cameraFeatures : photoFeatures}
+                    />
+                  </div>
                 </div>
-                <div style={{ height: '500px' }}>
-                  <VRMViewer 
-                    faceFeatures={detectionMode === 'camera' ? cameraFeatures : photoFeatures}
-                  />
-                </div>
-              </div>
+              )}
             </>
           )}
 
