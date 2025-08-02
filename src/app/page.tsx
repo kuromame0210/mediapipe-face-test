@@ -764,6 +764,109 @@ export default function FaceLandmarkTester() {
     return adjustments;
   };
 
+  // 客観的日本語顔特徴説明生成
+  const generateFaceDescription = (features: FaceFeatures): string[] => {
+    const descriptions: string[] = [];
+    
+    try {
+      // 顔の縦横比に基づく顔型判定
+      if (features.faceAspectRatio > 1.15) {
+        descriptions.push("面長な輪郭");
+      } else if (features.faceAspectRatio < 0.95) {
+        descriptions.push("横幅のある輪郭");
+      } else {
+        descriptions.push("バランスの取れた輪郭");
+      }
+
+      // 目の傾斜角度に基づく目型判定
+      if (features.eyeSlantAngle > 2) {
+        descriptions.push("つり目傾向");
+      } else if (features.eyeSlantAngle < -2) {
+        descriptions.push("たれ目傾向");
+      } else {
+        descriptions.push("水平な目");
+      }
+
+      // 眉の角度に基づく眉型判定
+      if (features.browAngle > -160) {
+        descriptions.push("上がり眉");
+      } else if (features.browAngle < -200) {
+        descriptions.push("下がり眉");
+      } else {
+        descriptions.push("平行眉");
+      }
+
+      // 眉の高さ判定
+      if (features.browHeight > 0.1) {
+        descriptions.push("眉の位置が高め");
+      } else if (features.browHeight < 0.07) {
+        descriptions.push("眉の位置が低め");
+      }
+
+      // 両目の間隔判定
+      if (features.interocularDistance > 0.35) {
+        descriptions.push("両目の間隔が広め");
+      } else if (features.interocularDistance < 0.28) {
+        descriptions.push("両目の間隔が狭め");
+      }
+
+      // 鼻の幅判定
+      if (features.noseWidth > 0.2) {
+        descriptions.push("鼻の幅が広め");
+      } else if (features.noseWidth < 0.15) {
+        descriptions.push("鼻の幅が狭め");
+      }
+
+      // 鼻の高さ判定
+      if (features.noseHeight > 0.12) {
+        descriptions.push("鼻筋が通っている");
+      } else if (features.noseHeight < 0.1) {
+        descriptions.push("低い鼻筋");
+      }
+
+      // 口の幅判定
+      if (features.mouthWidth > 0.4) {
+        descriptions.push("口が大きめ");
+      } else if (features.mouthWidth < 0.3) {
+        descriptions.push("口が小さめ");
+      }
+
+      // 唇の厚み判定
+      if (features.lipThickness > 0.025) {
+        descriptions.push("厚い唇");
+      } else if (features.lipThickness < 0.015) {
+        descriptions.push("薄い唇");
+      }
+
+      // 顎の尖り具合判定
+      if (features.jawSharpness > 0.6) {
+        descriptions.push("シャープな顎");
+      } else if (features.jawSharpness < 0.3) {
+        descriptions.push("丸い顎");
+      }
+
+      // 頬のふくらみ判定
+      if (features.cheekFullness > 0.15) {
+        descriptions.push("ふっくらした頬");
+      } else if (features.cheekFullness < 0.1) {
+        descriptions.push("すっきりした頬");
+      }
+
+      // 鼻の突出度判定（3D情報活用）
+      if (features.noseProjection > 0.02) {
+        descriptions.push("立体的な鼻");
+      } else if (features.noseProjection < 0.01) {
+        descriptions.push("平坦な鼻");
+      }
+
+    } catch (error) {
+      console.error('顔特徴説明生成エラー:', error);
+      descriptions.push("特徴解析中にエラーが発生しました");
+    }
+
+    return descriptions;
+  };
+
   // ランドマーク描画関数
   const drawLandmarks = (ctx: CanvasRenderingContext2D, landmarks: Array<{x: number, y: number, z?: number}>, width: number, height: number) => {
     ctx.lineWidth = 2;
@@ -1064,6 +1167,37 @@ export default function FaceLandmarkTester() {
                             上記の数値をVRMファイルのBlendShapeに適用することで、
                             写真の人物に似たアバターを自動生成できます。
                           </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 客観的顔特徴説明 */}
+                    {currentFeatures && (
+                      <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-xl p-6 border-2 border-green-200 mt-6">
+                        <h3 className="font-bold text-green-800 mb-4 text-xl flex items-center">
+                          📝 検出された顔の特徴
+                        </h3>
+                        <div className="bg-white rounded-lg p-4 border border-green-200">
+                          <p className="text-sm text-gray-600 mb-3">
+                            <strong>解析結果に基づく客観的な特徴:</strong>
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {generateFaceDescription(currentFeatures).map((description, index) => (
+                              <span
+                                key={index}
+                                className="inline-block bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium border border-green-300"
+                              >
+                                {description}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
+                            <p className="text-xs text-green-700">
+                              <strong>💡 説明:</strong> 
+                              上記の特徴は検出された数値データに基づく客観的な分析結果です。
+                              これらの情報はVRMアバターの自動調整に活用されます。
+                            </p>
+                          </div>
                         </div>
                       </div>
                     )}
