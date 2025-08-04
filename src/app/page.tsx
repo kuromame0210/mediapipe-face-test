@@ -36,6 +36,26 @@ interface VRMAdjustments {
   faceNarrow: number;
 }
 
+// 新しいUI表示用の特徴量インターface
+interface UIFriendlyFeatures {
+  // 目の調整
+  eyeSize: number;        // 目の大きさ (eyeWidth × eyeHeight)
+  eyeShape: number;       // 目の縦横比 (eyeSlantAngle)
+  eyeDistance: number;    // 両目の間隔 (interocularDistance)
+  
+  // 鼻の調整
+  noseWidth: number;      // 鼻の幅
+  noseHeight: number;     // 鼻の高さ
+  
+  // 口の調整
+  mouthWidth: number;     // 口の幅
+  lipThickness: number;   // 唇の厚さ
+  
+  // 顔の輪郭
+  faceShape: number;      // 顔の幅 (faceAspectRatio)
+  jawShape: number;       // 顎の形 (jawSharpness)
+}
+
 // 仕様書準拠: パラメータ正規化関数
 const normalizeParam = (value: number, paramName: string): number => {
   const config = faceParamsConfig[paramName as keyof typeof faceParamsConfig];
@@ -765,6 +785,54 @@ export default function FaceLandmarkTester() {
     return adjustments;
   };
 
+  // UI表示用の特徴量を計算する関数
+  const calculateUIFriendlyFeatures = (features: FaceFeatures): UIFriendlyFeatures => {
+    try {
+      return {
+        // 目の調整
+        eyeSize: features.eyeWidth * features.eyeHeight,           // 目の大きさ
+        eyeShape: features.eyeSlantAngle,                          // 目の縦横比（つり目/たれ目）
+        eyeDistance: features.interocularDistance,                 // 両目の間隔
+        
+        // 鼻の調整
+        noseWidth: features.noseWidth,                             // 鼻の幅
+        noseHeight: features.noseHeight,                           // 鼻の高さ
+        
+        // 口の調整
+        mouthWidth: features.mouthWidth,                           // 口の幅
+        lipThickness: features.lipThickness,                       // 唇の厚さ
+        
+        // 顔の輪郭
+        faceShape: features.faceAspectRatio,                       // 顔の幅（丸顔/面長）
+        jawShape: features.jawSharpness                            // 顎の形（シャープ/丸み）
+      };
+    } catch (error) {
+      console.error('UI表示用特徴量計算エラー:', error);
+      return {
+        eyeSize: 0, eyeShape: 0, eyeDistance: 0,
+        noseWidth: 0, noseHeight: 0,
+        mouthWidth: 0, lipThickness: 0,
+        faceShape: 0, jawShape: 0
+      };
+    }
+  };
+
+  // 相対的表現を生成する関数
+  const getRelativeExpression = (value: number, baseline: number, strongLabel: string, weakLabel: string): string => {
+    const ratio = baseline > 0 ? value / baseline : 0;
+    if (ratio > 1.15) return `${strongLabel}め`;
+    else if (ratio > 1.05) return `やや${strongLabel}`;
+    else if (ratio < 0.85) return `${weakLabel}め`;
+    else if (ratio < 0.95) return `やや${weakLabel}`;
+    else return '標準的';
+  };
+
+  // morph値を計算する関数（新しい特徴量用）
+  const calculateMorphValue = (value: number, paramConfig: {min: number, max: number}): number => {
+    const normalized = (value - paramConfig.min) / (paramConfig.max - paramConfig.min);
+    return Math.max(0, Math.min(100, normalized * 100));
+  };
+
   // 複合的な体型判定スコア計算
   const calculateBodyTypeScore = (features: FaceFeatures): number => {
     let score = 0;
@@ -1098,50 +1166,179 @@ export default function FaceLandmarkTester() {
               
               {(() => {
                 const currentFeatures = photoFeatures;
+                const uiFeatures = currentFeatures ? calculateUIFriendlyFeatures(currentFeatures) : null;
                 const adjustments = currentFeatures ? predictVRMAdjustments(currentFeatures) : null;
+                
+                // ベースライン値（標準的な値として設定）
+                const baselines = {
+                  eyeSize: 0.004,            // eyeWidth * eyeHeight の標準値（調整済み）
+                  eyeShape: 0,               // 傾斜角度0度が標準
+                  eyeDistance: 0.32,         // 両目間隔の標準値
+                  noseWidth: 0.17,           // 鼻幅の標準値
+                  noseHeight: 0.12,          // 鼻高の標準値
+                  mouthWidth: 0.35,          // 口幅の標準値
+                  lipThickness: 0.022,       // 唇厚の標準値
+                  faceShape: 1.25,           // 顔縦横比の標準値
+                  jawShape: 0.5              // 顎の標準値
+                };
                 
                 return (
                   <>
-                    {/* 特徴量グリッド */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
-                      {[
-                        { label: '顔の縦横比', param: 'faceRatio', value: currentFeatures?.faceAspectRatio, color: 'purple' },
-                        { label: '目の傾斜角度', param: 'eyeTilt', value: currentFeatures?.eyeSlantAngle, unit: '°', color: 'blue' },
-                        { label: '眉の角度', param: 'browTilt', value: currentFeatures?.browAngle, unit: '°', color: 'blue' },
-                        { label: '眉の高さ', param: 'browY', value: currentFeatures?.browHeight, color: 'blue' },
-                        { label: '両目の間隔', param: 'eyeGap', value: currentFeatures?.interocularDistance, color: 'orange' },
-                        { label: '鼻の幅', param: 'noseWidth', value: currentFeatures?.noseWidth, color: 'green' },
-                        { label: '鼻の高さ', param: 'noseLength', value: currentFeatures?.noseHeight, color: 'green' },
-                        { label: '口の幅', param: 'mouthWidth', value: currentFeatures?.mouthWidth, color: 'red' },
-                        { label: '唇の厚み', param: 'lipThick', value: currentFeatures?.lipThickness, color: 'red' },
-                        { label: '顎の尖り具合', param: 'jawAngle', value: currentFeatures?.jawSharpness, color: 'purple' },
-                        { label: '鼻の突出度', value: currentFeatures?.noseProjection, color: 'green' },
-                        { label: '頬骨の突出度', value: currentFeatures?.cheekFullness, color: 'orange' },
-                        { label: '処理時間', value: `${currentFeatures?.processingTime}ms`, color: 'gray' }
-                      ].map((item, index) => {
-                        const rawValue = typeof item.value === 'number' ? item.value : 0;
-                        const morphValue = item.param ? normalizeParam(rawValue, item.param) : null;
-                        
-                        return (
-                          <div key={index} className="bg-white p-3 rounded-xl shadow-md hover:shadow-lg transition-shadow border-2 border-gray-200">
-                            <h3 className={`font-semibold text-${item.color}-600 text-xs mb-1`}>{item.label}</h3>
-                            <div className="space-y-1">
-                              <p className="text-sm font-mono text-gray-800">
-                                {typeof item.value === 'number' ? 
-                                  `${item.value.toFixed(4)}${item.unit || ''}` : 
-                                  item.value
-                                }
-                              </p>
-                              {morphValue !== null && (
-                                <p className="text-xs font-bold text-blue-600">
-                                  morph: {(morphValue * 100).toFixed(0)}%
-                                </p>
-                              )}
+                    {/* カテゴリ別特徴量表示 */}
+                    {uiFeatures && (
+                      <div className="space-y-6 mb-8">
+                        {/* 目の調整 */}
+                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border-2 border-blue-200">
+                          <h3 className="font-bold text-blue-800 mb-4 text-lg flex items-center">
+                            👁️ 目の調整
+                          </h3>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-blue-400">
+                              <h4 className="font-semibold text-blue-700 text-sm mb-2">目の大きさ</h4>
+                              <div className="text-lg font-bold text-blue-900 mb-1">
+                                {getRelativeExpression(uiFeatures.eyeSize, baselines.eyeSize, '大きく', '小さく')}
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                数値: {uiFeatures.eyeSize.toFixed(6)}
+                              </div>
+                              <div className="text-xs font-bold text-blue-600">
+                                morph: {Math.min(100, Math.max(0, Math.round((uiFeatures.eyeSize / baselines.eyeSize - 1) * 100 + 50)))}%
+                              </div>
+                            </div>
+                            <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-blue-400">
+                              <h4 className="font-semibold text-blue-700 text-sm mb-2">目の縦横比</h4>
+                              <div className="text-lg font-bold text-blue-900 mb-1">
+                                {uiFeatures.eyeShape > 2 ? 'つり目' : uiFeatures.eyeShape < -2 ? 'たれ目' : '標準的'}
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                角度: {uiFeatures.eyeShape.toFixed(2)}°
+                              </div>
+                              <div className="text-xs font-bold text-blue-600">
+                                morph: {normalizeParam(uiFeatures.eyeShape, 'eyeTilt') ? Math.round(normalizeParam(uiFeatures.eyeShape, 'eyeTilt') * 100) : 50}%
+                              </div>
+                            </div>
+                            <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-blue-400">
+                              <h4 className="font-semibold text-blue-700 text-sm mb-2">両目の間隔</h4>
+                              <div className="text-lg font-bold text-blue-900 mb-1">
+                                {getRelativeExpression(uiFeatures.eyeDistance, baselines.eyeDistance, '遠く', '近く')}
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                数値: {uiFeatures.eyeDistance.toFixed(4)}
+                              </div>
+                              <div className="text-xs font-bold text-blue-600">
+                                morph: {normalizeParam(uiFeatures.eyeDistance, 'eyeGap') ? Math.round(normalizeParam(uiFeatures.eyeDistance, 'eyeGap') * 100) : 50}%
+                              </div>
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
+                        </div>
+
+                        {/* 鼻の調整 */}
+                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-6 border-2 border-green-200">
+                          <h3 className="font-bold text-green-800 mb-4 text-lg flex items-center">
+                            👃 鼻の調整
+                          </h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-green-400">
+                              <h4 className="font-semibold text-green-700 text-sm mb-2">鼻の幅</h4>
+                              <div className="text-lg font-bold text-green-900 mb-1">
+                                {getRelativeExpression(uiFeatures.noseWidth, baselines.noseWidth, '太く', '細く')}
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                数値: {uiFeatures.noseWidth.toFixed(4)}
+                              </div>
+                              <div className="text-xs font-bold text-green-600">
+                                morph: {normalizeParam(uiFeatures.noseWidth, 'noseWidth') ? Math.round(normalizeParam(uiFeatures.noseWidth, 'noseWidth') * 100) : 50}%
+                              </div>
+                            </div>
+                            <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-green-400">
+                              <h4 className="font-semibold text-green-700 text-sm mb-2">鼻の高さ</h4>
+                              <div className="text-lg font-bold text-green-900 mb-1">
+                                {getRelativeExpression(uiFeatures.noseHeight, baselines.noseHeight, '高く', '低く')}
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                数値: {uiFeatures.noseHeight.toFixed(4)}
+                              </div>
+                              <div className="text-xs font-bold text-green-600">
+                                morph: {normalizeParam(uiFeatures.noseHeight, 'noseLength') ? Math.round(normalizeParam(uiFeatures.noseHeight, 'noseLength') * 100) : 50}%
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 口の調整 */}
+                        <div className="bg-gradient-to-r from-red-50 to-pink-50 rounded-xl p-6 border-2 border-red-200">
+                          <h3 className="font-bold text-red-800 mb-4 text-lg flex items-center">
+                            👄 口の調整
+                          </h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-red-400">
+                              <h4 className="font-semibold text-red-700 text-sm mb-2">口の幅</h4>
+                              <div className="text-lg font-bold text-red-900 mb-1">
+                                {getRelativeExpression(uiFeatures.mouthWidth, baselines.mouthWidth, '大きく', '小さく')}
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                数値: {uiFeatures.mouthWidth.toFixed(4)}
+                              </div>
+                              <div className="text-xs font-bold text-red-600">
+                                morph: {normalizeParam(uiFeatures.mouthWidth, 'mouthWidth') ? Math.round(normalizeParam(uiFeatures.mouthWidth, 'mouthWidth') * 100) : 50}%
+                              </div>
+                            </div>
+                            <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-red-400">
+                              <h4 className="font-semibold text-red-700 text-sm mb-2">唇の厚さ</h4>
+                              <div className="text-lg font-bold text-red-900 mb-1">
+                                {getRelativeExpression(uiFeatures.lipThickness, baselines.lipThickness, '厚く', '薄く')}
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                数値: {uiFeatures.lipThickness.toFixed(4)}
+                              </div>
+                              <div className="text-xs font-bold text-red-600">
+                                morph: {normalizeParam(uiFeatures.lipThickness, 'lipThick') ? Math.round(normalizeParam(uiFeatures.lipThickness, 'lipThick') * 100) : 50}%
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 顔の輪郭 */}
+                        <div className="bg-gradient-to-r from-purple-50 to-violet-50 rounded-xl p-6 border-2 border-purple-200">
+                          <h3 className="font-bold text-purple-800 mb-4 text-lg flex items-center">
+                            🎭 顔の輪郭
+                          </h3>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-purple-400">
+                              <h4 className="font-semibold text-purple-700 text-sm mb-2">顔の幅</h4>
+                              <div className="text-lg font-bold text-purple-900 mb-1">
+                                {uiFeatures.faceShape > 1.35 ? '面長' : uiFeatures.faceShape < 1.15 ? '丸顔' : '標準的'}
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                縦横比: {uiFeatures.faceShape.toFixed(4)}
+                              </div>
+                              <div className="text-xs font-bold text-purple-600">
+                                morph: {normalizeParam(uiFeatures.faceShape, 'faceRatio') ? Math.round(normalizeParam(uiFeatures.faceShape, 'faceRatio') * 100) : 50}%
+                              </div>
+                            </div>
+                            <div className="bg-white p-4 rounded-lg shadow-sm border-l-4 border-purple-400">
+                              <h4 className="font-semibold text-purple-700 text-sm mb-2">顎の形</h4>
+                              <div className="text-lg font-bold text-purple-900 mb-1">
+                                {uiFeatures.jawShape > 0.6 ? 'シャープ' : uiFeatures.jawShape < 0.4 ? '丸み' : '標準的'}
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                数値: {uiFeatures.jawShape.toFixed(4)}
+                              </div>
+                              <div className="text-xs font-bold text-purple-600">
+                                morph: {normalizeParam(uiFeatures.jawShape, 'jawAngle') ? Math.round(normalizeParam(uiFeatures.jawShape, 'jawAngle') * 100) : 50}%
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 処理時間表示 */}
+                        <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                          <div className="text-center text-sm text-gray-600">
+                            処理時間: {currentFeatures?.processingTime.toFixed(2)}ms
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* VRM調整予測 */}
                     {adjustments && (
