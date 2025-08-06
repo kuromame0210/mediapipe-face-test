@@ -106,7 +106,6 @@ export default function VRMViewer({ faceFeatures }: VRMViewerProps) {
     setTimeout(() => {
       if (!isCleanedUpRef.current && initRef.current) {
         console.log('📦 遅延後のVRM読み込み実行');
-        // eslint-disable-next-line react-hooks/exhaustive-deps
         loadVRM(selectedVRM);
       } else {
         console.log('❌ 遅延後のVRM読み込みキャンセル: コンポーネント状態変更');

@@ -827,11 +827,6 @@ export default function FaceLandmarkTester() {
     else return '標準的';
   };
 
-  // morph値を計算する関数（新しい特徴量用）
-  const calculateMorphValue = (value: number, paramConfig: {min: number, max: number}): number => {
-    const normalized = (value - paramConfig.min) / (paramConfig.max - paramConfig.min);
-    return Math.max(0, Math.min(100, normalized * 100));
-  };
 
   // 複合的な体型判定スコア計算
   const calculateBodyTypeScore = (features: FaceFeatures): number => {
